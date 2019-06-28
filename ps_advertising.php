@@ -32,6 +32,11 @@ if (!defined('_PS_VERSION_')) {
 
 class Ps_Advertising extends Module implements WidgetInterface
 {
+    /**
+     * @var string Name of the module running on PS 1.6.x. Used for data migration.
+     */
+    const PS_16_EQUIVALENT_MODULE = 'blockadvertising';
+
     /* Title associated to the image */
     public $adv_title;
 
@@ -99,16 +104,20 @@ class Ps_Advertising extends Module implements WidgetInterface
         $displayRightColumn = $this->registerHook('displayRightColumn');
 
         if ($displayLeftColumn || $displayRightColumn) {
-            Configuration::updateGlobalValue('BLOCKADVERT_LINK', 'http://www.prestashop.com/');
-            Configuration::updateGlobalValue('BLOCKADVERT_TITLE', 'PrestaShop');
-            Configuration::updateGlobalValue('BLOCKADVERT_LEFT_COLUMN', true);
-            Configuration::updateGlobalValue('BLOCKADVERT_RIGHT_COLUMN', true);
-            // Try to update with the extension of the image that exists in the module directory
-            foreach (scandir(_PS_MODULE_DIR_.$this->name) as $file) {
-                if (in_array($file, array('advertising.jpg', 'advertising.gif', 'advertising.png'))) {
-                    Configuration::updateGlobalValue('BLOCKADVERT_IMG_EXT', substr($file, strrpos($file, '.') + 1));
+            if (!$this->uninstallPrestaShop16Module()) {
+                // No data could be retrieved from 1.6 module
+                Configuration::updateGlobalValue('BLOCKADVERT_LINK', 'http://www.prestashop.com/');
+                Configuration::updateGlobalValue('BLOCKADVERT_TITLE', 'PrestaShop');
+                
+                // Try to update with the extension of the image that exists in the module directory
+                foreach (scandir(_PS_MODULE_DIR_.$this->name) as $file) {
+                    if (in_array($file, array('advertising.jpg', 'advertising.gif', 'advertising.png'))) {
+                        Configuration::updateGlobalValue('BLOCKADVERT_IMG_EXT', substr($file, strrpos($file, '.') + 1));
+                    }
                 }
             }
+            Configuration::updateGlobalValue('BLOCKADVERT_LEFT_COLUMN', true);
+            Configuration::updateGlobalValue('BLOCKADVERT_RIGHT_COLUMN', true);
 
             return true;
         }
@@ -126,6 +135,27 @@ class Ps_Advertising extends Module implements WidgetInterface
         Configuration::deleteByName('BLOCKADVERT_IMG_EXT');
 
         return (parent::uninstall());
+    }
+
+    /**
+     * Migrate data from 1.6 equivalent module (if applicable), then uninstall
+     */
+    public function uninstallPrestaShop16Module()
+    {
+        if (!Module::isInstalled(self::PS_16_EQUIVALENT_MODULE)) {
+            return false;
+        }
+        $oldModule = Module::getInstanceByName(self::PS_16_EQUIVALENT_MODULE);
+        if ($oldModule) {
+            // This closure calls the parent class to prevent data to be erased
+            // It allows the new module to be configured without migration
+            $parentUninstallClosure = function() {
+                return parent::uninstall();
+            };
+            $parentUninstallClosure = $parentUninstallClosure->bindTo($oldModule, get_class($oldModule));
+            $parentUninstallClosure();
+        }
+        return true;
     }
 
     /**
